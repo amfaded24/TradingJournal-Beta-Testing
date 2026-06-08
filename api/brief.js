@@ -1,6 +1,5 @@
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', 'https://askesis.trading');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -16,37 +15,54 @@ export default async function handler(req, res) {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
 
-    const statsText = stats ? `
-Statistiche trader:
-- Trade totali: ${stats.totalTrades || 0}
-- Win Rate: ${stats.winRate || 0}%
-- P&L totale: $${stats.totalPnL || 0}
-- Profit Factor: ${stats.profitFactor || 0}
-- Max Drawdown: ${stats.maxDD || 0}%
-- Emozione più frequente: ${stats.topEmotion || 'N/A'}
-- Sessione migliore: ${stats.bestSession || 'N/A'}
+    const statsText = stats && stats.totalTrades > 0 ? `
+Le statistiche del trader:
+- Trade totali: ${stats.totalTrades}
+- Win Rate: ${stats.winRate}%
+- P&L totale: $${stats.totalPnL}
+- Profit Factor: ${stats.profitFactor}
+- Max Drawdown: ${stats.maxDD}%
+${stats.topEmotion ? `- Emozione più frequente: ${stats.topEmotion}` : ''}
+${stats.bestSession ? `- Sessione migliore: ${stats.bestSession}` : ''}
 ` : '';
 
-    const prompt = `Sei un analista di mercato e coach di trading professionale. Oggi è ${today}.
+    const prompt = `Sei un analista di mercato professionale. Oggi è ${today}.
+
+IMPORTANTE: Prima di rispondere, usa il web search per cercare:
+1. Le ultime notizie di mercato di oggi (forex, oro, indici)
+2. I prezzi attuali di EUR/USD, GBP/USD, USD/JPY, XAU/USD
+3. Gli eventi macroeconomici in calendario oggi
 
 ${statsText}
 
-Genera un brief giornaliero di trading in italiano, strutturato così:
+Dopo aver cercato le informazioni REALI E AGGIORNATE, scrivi un brief giornaliero in italiano con questa struttura HTML (NON usare markdown, asterischi o trattini):
 
-**🌍 MACRO & SENTIMENT**
-(2-3 frasi sul sentiment generale dei mercati oggi — risk-on o risk-off, cosa guida i mercati)
+<section class="brief-macro">
+<h4>🌍 Macro &amp; Sentiment</h4>
+<p>[2-3 frasi sul sentiment reale di oggi basate su notizie trovate]</p>
+</section>
 
-**📊 BIAS FOREX**
-(Bias direzionale breve per: EUR/USD, GBP/USD, USD/JPY, XAU/USD — es. "EUR/USD: bias rialzista sopra 1.0850")
+<section class="brief-forex">
+<h4>📊 Bias Forex</h4>
+<div class="brief-pair"><span class="pair-name">EUR/USD</span><span class="pair-bias">[RIALZISTA/RIBASSISTA/NEUTRO]</span><span class="pair-level">[livello chiave reale]</span></div>
+<div class="brief-pair"><span class="pair-name">GBP/USD</span><span class="pair-bias">[bias]</span><span class="pair-level">[livello]</span></div>
+<div class="brief-pair"><span class="pair-name">USD/JPY</span><span class="pair-bias">[bias]</span><span class="pair-level">[livello]</span></div>
+<div class="brief-pair"><span class="pair-name">XAU/USD</span><span class="pair-bias">[bias]</span><span class="pair-level">[livello]</span></div>
+</section>
 
-**⚡ FOCUS DEL GIORNO**
-(1-2 eventi o livelli chiave da monitorare oggi)
+<section class="brief-focus">
+<h4>⚡ Focus del Giorno</h4>
+<p>[eventi macro reali di oggi con orari CET]</p>
+</section>
 
-**🧠 MINDSET**
-(Una frase motivazionale o consiglio psicologico per il trader, personalizzato se hai le statistiche)
+<section class="brief-mindset">
+<h4>🧠 Mindset</h4>
+<p>[consiglio psicologico${stats && stats.totalTrades > 0 ? ' personalizzato basato sulle statistiche del trader' : ''}]</p>
+</section>
 
-Sii conciso, diretto e professionale. Niente fronzoli.`;
+Usa SOLO HTML come mostrato sopra. Niente asterischi, niente trattini, niente markdown.`;
 
+    // Call Claude with web search tool
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -56,7 +72,13 @@ Sii conciso, diretto e professionale. Niente fronzoli.`;
       },
       body: JSON.stringify({
         model: 'claude-opus-4-5',
-        max_tokens: 600,
+        max_tokens: 1500,
+        tools: [
+          {
+            type: 'web_search_20250305',
+            name: 'web_search'
+          }
+        ],
         messages: [{ role: 'user', content: prompt }]
       })
     });
@@ -67,7 +89,12 @@ Sii conciso, diretto e professionale. Niente fronzoli.`;
     }
 
     const data = await response.json();
-    const brief = data.content[0]?.text || '';
+
+    // Extract text from content blocks (may include tool_use blocks)
+    const brief = data.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('');
 
     return res.status(200).json({
       brief,
