@@ -1,29 +1,27 @@
 // api/brief.js — Proxy serverless per Anthropic API
-// La API key rimane sicura sul server, mai esposta al browser
 
 export default async function handler(req, res) {
-  // CORS — permette chiamate dall'app Askesis
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'API key non configurata sul server' });
-  }
+  if (!apiKey) return res.status(200).json({ brief: '<p style="color:red"><strong>ERRORE: API key mancante sul server Vercel</strong></p>' });
 
   try {
-    const { stats } = req.body;
+    // Parsing difensivo: Vercel a volte non parsa automaticamente il body
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch (e) { body = {}; }
+    }
+    body = body || {};
+
+    const { stats } = body;
     if (!stats) {
-      return res.status(400).json({ error: 'stats mancanti' });
+      return res.status(200).json({ brief: '<p style="color:orange"><strong>DEBUG: stats mancanti nel body</strong><br>Body ricevuto: ' + JSON.stringify(body).substring(0, 200) + '</p>' });
     }
 
     const dateStr = new Date().toLocaleDateString('it-IT', {
@@ -91,13 +89,11 @@ Rispondi SOLO con l'HTML delle quattro sezioni, nessun testo aggiuntivo prima o 
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('[brief] Anthropic error', response.status, errText);
-      return res.status(response.status).json({ error: errText });
+      return res.status(200).json({ brief: `<p style="color:red"><strong>ERRORE API ANTHROPIC ${response.status}:</strong><br><pre style="font-size:10px;white-space:pre-wrap">${errText.substring(0, 500)}</pre></p>` });
     }
 
     const data = await response.json();
 
-    // Estrai solo il testo dai content block (ignora tool_use)
     const briefHtml = (data.content || [])
       .filter(b => b.type === 'text')
       .map(b => b.text || '')
@@ -106,9 +102,14 @@ Rispondi SOLO con l'HTML delle quattro sezioni, nessun testo aggiuntivo prima o 
       .replace(/\n?```$/, '')
       .trim();
 
+    if (!briefHtml) {
+      const types = JSON.stringify((data.content || []).map(b => b.type));
+      return res.status(200).json({ brief: `<p style="color:orange"><strong>RISPOSTA VUOTA</strong><br>stop_reason: ${data.stop_reason}<br>content types: ${types}</p>` });
+    }
+
     return res.status(200).json({ brief: briefHtml });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(200).json({ brief: `<p style="color:red"><strong>ERRORE CATCH:</strong><br>${err.message}<br><small>${err.stack ? err.stack.substring(0, 300) : ''}</small></p>` });
   }
 }
