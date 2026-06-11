@@ -32,10 +32,8 @@ export default async function handler(req, res) {
 
     const fullPrompt = `PRIMA DI RISPONDERE — RICERCA OBBLIGATORIA:
 Usa web_search per cercare ADESSO (non dalla memoria):
-1. "forex market analysis ${dateStr}" — contesto macro attuale
-2. "EUR/USD GBP/USD XAU/USD price ${dateStr}" — prezzi live
-3. "economic calendar events ${dateStr}" — eventi di oggi
-4. "Fed BCE BOJ news ${dateStr}" — news banche centrali
+1. "EUR/USD GBP/USD XAU/USD forex ${dateStr}" — prezzi e analisi live
+2. "economic calendar forex news ${dateStr}" — eventi e news del giorno
 
 Usa i risultati trovati come base per tutto il brief.
 NON generare dati di mercato dalla memoria — solo da ricerche reali.
